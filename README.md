@@ -9,31 +9,30 @@ Provides:
 
 ## Installation
 
-Add both shards to your `shard.yml`:
+Add the shard to your `shard.yml`:
 
 ```yaml
 dependencies:
-  marten_importmap:
-    github: treagod/marten-importmap
   marten_stimulus:
     github: treagod/marten-stimulus
 ```
 
-Run `shards install`, then add the requires:
+`marten-importmap` is pulled in as a transitive dependency — no need to declare it separately.
+
+Run `shards install`, then add the require:
 
 ```crystal
 # src/project.cr
-require "marten_importmap"
 require "marten_stimulus"
 ```
 
 ```crystal
 # src/cli.cr
 require "marten/cli"
-require "marten_stimulus/cli"
+require "marten_stimulus/cli"  # also loads marten_importmap/cli
 ```
 
-Add both apps to `config.installed_apps`:
+Both apps must be registered explicitly in `config.installed_apps` in the correct order:
 
 ```crystal
 config.installed_apps = [
@@ -51,6 +50,8 @@ marten importmap init
 ```
 
 This creates `config/initializers/importmap.cr`, `config/initializers/importmap_pins.cr`, and `src/assets/application.js`. See [marten-importmap](https://github.com/treagod/marten-importmap) for full details.
+
+> **Note:** `marten importmap init` checks for `require "marten_importmap"` literally. If your project only has `require "marten_stimulus"`, it will insert a redundant `require "marten_importmap"` line. This is harmless — Crystal's require is idempotent — but you can remove it afterwards since `marten_stimulus` already pulls it in.
 
 Pin Stimulus:
 
