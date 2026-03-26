@@ -1,0 +1,10 @@
+name: marten_stimulus
+version: 0.1.0
+
+dependencies:
+  marten_importmap:
+    github: treagod/marten-importmap
+
+development_dependencies:
+  sqlite3:
+    github: crystal-lang/crystal-sqlite3
