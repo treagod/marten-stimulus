@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Stimulus loader fixture</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "stimulus-loading": "/src/marten_stimulus/assets/stimulus-loading.js",
+          "controllers/hello_controller": "/test/browser/fixtures/controllers/hello_controller.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import {
+        eagerLoadControllersFrom,
+        lazyLoadControllersFrom,
+      } from "stimulus-loading"
+
+      window.stimulusLoadingExports = {
+        eagerLoadControllersFrom,
+        lazyLoadControllersFrom,
+      }
+    </script>
+  </body>
+</html>

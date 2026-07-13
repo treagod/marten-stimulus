@@ -1,6 +1,8 @@
 .DS_Store
 .ideas/
 .vscode/
+/node_modules/
+/test-results/
 /bin/
 /lib/
 /.shards/

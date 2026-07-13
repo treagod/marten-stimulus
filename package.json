@@ -1,0 +1,10 @@
+{
+  "name": "marten-stimulus",
+  "private": true,
+  "scripts": {
+    "test:js": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}
