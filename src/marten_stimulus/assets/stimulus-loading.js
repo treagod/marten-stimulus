@@ -8,19 +8,46 @@ export function eagerLoadControllersFrom(under, application) {
   const imports = JSON.parse(importMapJSON).imports || {}
   const prefix = `${under}/`
 
-  Object.keys(imports)
-    .filter(m => m.startsWith(prefix))
-    .forEach(m => {
+  const loading = new Set()
+  const controllerImports = Object.keys(imports)
+    .filter(m => {
+      if (!m.startsWith(prefix)) return false
+      return /^(?:[^/]+\/)*[^/]+_controller$/.test(m.slice(prefix.length))
+    })
+    .map(m => {
       const identifier = m
         .slice(prefix.length)
         .replace(/_controller$/, "")
         .replace(/_/g, "-")
         .replace(/\//g, "--")
 
-      import(m).then(module => {
-        application.register(identifier, module.default)
-      })
+      if (hasRegisteredController(application, identifier) || loading.has(identifier)) {
+        return null
+      }
+
+      loading.add(identifier)
+
+      return import(m)
+        .catch(error => {
+          throw new Error(
+            `Failed to load controller "${identifier}" from "${m}"`,
+            { cause: error },
+          )
+        })
+        .then(module => {
+          if (!hasRegisteredController(application, identifier)) {
+            application.register(identifier, module.default)
+          }
+        })
     })
+    .filter(Boolean)
+
+  return Promise.all(controllerImports)
+}
+
+function hasRegisteredController(application, identifier) {
+  const modulesByIdentifier = application.router?.modulesByIdentifier
+  return typeof modulesByIdentifier?.has === "function" && modulesByIdentifier.has(identifier)
 }
 
 export function lazyLoadControllersFrom(under, application) {

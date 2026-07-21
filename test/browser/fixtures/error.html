@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Stimulus loader error fixture</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "stimulus-loading": "/src/marten_stimulus/assets/stimulus-loading.js",
+          "controllers/missing_controller": "/test/browser/fixtures/controllers/missing_controller.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import { eagerLoadControllersFrom } from "stimulus-loading"
+
+      window.stimulusLoadingExports = { eagerLoadControllersFrom }
+    </script>
+  </body>
+</html>
