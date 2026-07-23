@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Stimulus loader dynamic error fixture</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "stimulus-loading": "/src/marten_stimulus/assets/stimulus-loading.js",
+          "controllers/missing_controller": "/test/browser/fixtures/controllers/missing_controller.js",
+          "controllers/hello_controller": "/test/browser/fixtures/controllers/hello_controller.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import { lazyLoadControllersFrom } from "stimulus-loading"
+
+      window.stimulusLoadingExports = { lazyLoadControllersFrom }
+    </script>
+  </body>
+</html>

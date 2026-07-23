@@ -70,6 +70,11 @@ export function lazyLoadControllersFrom(under, application, element = document) 
 
   const observer = new MutationObserver(mutations => {
     mutations.forEach(mutation => {
+      if (mutation.type === "attributes") {
+        eachAttribute(mutation.target, under, application, imports, prefix, loading)
+        return
+      }
+
       mutation.addedNodes.forEach(node => {
         if (node.nodeType !== Node.ELEMENT_NODE) return
         eachAttribute(node, under, application, imports, prefix, loading)
@@ -80,7 +85,12 @@ export function lazyLoadControllersFrom(under, application, element = document) 
     })
   })
 
-  observer.observe(document.documentElement, { childList: true, subtree: true })
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["data-controller"],
+  })
   scan(element)
 }
 
@@ -91,10 +101,15 @@ function eachAttribute(el, under, application, imports, prefix, loading) {
     if (!imports[m] || hasRegisteredController(application, identifier) || loading.has(identifier)) return
 
     loading.add(identifier)
-    import(m).then(module => {
-      if (!hasRegisteredController(application, identifier)) {
-        application.register(identifier, module.default)
-      }
-    }).finally(() => loading.delete(identifier))
+    import(m).then(
+      module => {
+        if (!hasRegisteredController(application, identifier)) {
+          application.register(identifier, module.default)
+        }
+      },
+      error => {
+        console.error(`Failed to load controller "${identifier}" from "${m}"`, error)
+      },
+    ).finally(() => loading.delete(identifier))
   })
 }

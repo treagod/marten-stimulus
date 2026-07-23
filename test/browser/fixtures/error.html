@@ -14,9 +14,15 @@
   </head>
   <body>
     <script type="module">
-      import { eagerLoadControllersFrom } from "stimulus-loading"
+      import {
+        eagerLoadControllersFrom,
+        lazyLoadControllersFrom,
+      } from "stimulus-loading"
 
-      window.stimulusLoadingExports = { eagerLoadControllersFrom }
+      window.stimulusLoadingExports = {
+        eagerLoadControllersFrom,
+        lazyLoadControllersFrom,
+      }
     </script>
   </body>
 </html>

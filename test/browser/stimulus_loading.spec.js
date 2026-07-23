@@ -277,3 +277,264 @@ test("scans the supplied root when it has a controller attribute", async ({ page
   await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["admin--user"])
   expect(await page.evaluate(() => window.controllerImports)).toEqual({ adminUser: 1 })
 })
+
+test("loads a controller on a newly inserted element", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+
+    const element = document.createElement("div")
+    element.dataset.controller = "hello"
+    document.body.append(element)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+})
+
+test("loads controllers nested inside a newly inserted container", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+
+    const container = document.createElement("section")
+    const element = document.createElement("div")
+    element.dataset.controller = "admin--user"
+    container.append(element)
+    document.body.append(container)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["admin--user"])
+})
+
+test("loads a controller when data-controller is added", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+
+    const element = document.createElement("div")
+    document.body.append(element)
+    element.setAttribute("data-controller", "my-form")
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["my-form"])
+})
+
+test("loads newly added identifiers when data-controller changes", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const element = document.createElement("div")
+    element.dataset.controller = "hello"
+    document.body.append(element)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.lazyElement = element
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+
+  await page.evaluate(() => window.lazyElement.setAttribute("data-controller", "hello my-form"))
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations.sort())).toEqual([
+    "hello",
+    "my-form",
+  ])
+})
+
+test("does not import a controller when data-controller is removed", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const element = document.createElement("div")
+    element.dataset.controller = "hello"
+    document.body.append(element)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.lazyElement = element
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+  await page.evaluate(() => window.lazyElement.removeAttribute("data-controller"))
+  await page.waitForTimeout(50)
+
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ hello: 1 })
+  expect(await page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+})
+
+test("ignores text nodes added to the document", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+    document.body.append(document.createTextNode('<div data-controller="hello"></div>'))
+  })
+
+  await page.waitForTimeout(50)
+  expect(await page.evaluate(() => window.lazyApplication.registrations)).toEqual([])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({})
+})
+
+test("registers a controller only once when it appears multiple times", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+
+    const first = document.createElement("div")
+    first.dataset.controller = "hello"
+    const second = document.createElement("div")
+    second.dataset.controller = "hello"
+    document.body.append(first, second)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ hello: 1 })
+})
+
+test("reports failed lazy imports with contextual console.error", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/dynamic_error.html")
+
+  await page.evaluate(() => {
+    window.lazyErrors = []
+    console.error = (...args) => window.lazyErrors.push(args.map(String))
+
+    const application = {
+      router: { modulesByIdentifier: new Map() },
+      register() {},
+    }
+
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+    const element = document.createElement("div")
+    element.dataset.controller = "missing"
+    document.body.append(element)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyErrors.length)).toBe(1)
+  const error = await page.evaluate(() => window.lazyErrors[0])
+  expect(error[0]).toContain("missing")
+  expect(error[0]).toContain("controllers/missing_controller")
+  expect(error[1]).toMatch(/Error|failed/i)
+})
+
+test("continues observing valid mutations after a failed lazy import", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/dynamic_error.html")
+
+  await page.evaluate(() => {
+    window.lazyErrors = []
+    console.error = (...args) => window.lazyErrors.push(args.map(String))
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+
+    const missing = document.createElement("div")
+    missing.dataset.controller = "missing"
+    document.body.append(missing)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyErrors.length)).toBe(1)
+
+  await page.evaluate(() => {
+    const element = document.createElement("div")
+    element.dataset.controller = "hello"
+    document.body.append(element)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+})
