@@ -104,3 +104,176 @@ test("includes the identifier and import-map path when an import fails", async (
   expect(message).toContain("missing")
   expect(message).toContain("controllers/missing_controller")
 })
+
+test("lazy-loads controllers already present in the document", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const existing = document.createElement("div")
+    existing.dataset.controller = "hello"
+    document.body.append(existing)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ hello: 1 })
+})
+
+test("loads multiple identifiers with arbitrary whitespace and nested names", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const existing = document.createElement("div")
+    existing.setAttribute("data-controller", "hello \t my-form\nadmin--user")
+    document.body.append(existing)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations.sort())).toEqual([
+    "admin--user",
+    "hello",
+    "my-form",
+  ])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({
+    hello: 1,
+    myForm: 1,
+    adminUser: 1,
+  })
+})
+
+test("ignores unknown lazy controller identifiers", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const existing = document.createElement("div")
+    existing.dataset.controller = "unknown hello"
+    document.body.append(existing)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["hello"])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ hello: 1 })
+})
+
+test("does not import an already registered lazy controller", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  const result = await page.evaluate(() => {
+    window.controllerImports = {}
+    const existing = document.createElement("div")
+    existing.dataset.controller = "hello"
+    document.body.append(existing)
+
+    const modulesByIdentifier = new Map([["hello", {}]])
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier) {
+        this.registrations.push(identifier)
+      },
+    }
+
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application)
+    return { imports: window.controllerImports, registrations: application.registrations }
+  })
+
+  expect(result).toEqual({ imports: {}, registrations: [] })
+})
+
+test("limits the initial lazy scan to a supplied root", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const root = document.createElement("section")
+    const inside = document.createElement("div")
+    inside.dataset.controller = "my-form"
+    root.append(inside)
+
+    const outside = document.createElement("div")
+    outside.dataset.controller = "hello"
+    document.body.append(root, outside)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application, root)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["my-form"])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ myForm: 1 })
+})
+
+test("scans the supplied root when it has a controller attribute", async ({ page }) => {
+  await page.goto("/test/browser/fixtures/index.html")
+
+  await page.evaluate(() => {
+    window.controllerImports = {}
+    const root = document.createElement("div")
+    root.dataset.controller = "admin--user"
+    document.body.append(root)
+
+    const modulesByIdentifier = new Map()
+    const application = {
+      router: { modulesByIdentifier },
+      registrations: [],
+      register(identifier, controller) {
+        this.registrations.push(identifier)
+        modulesByIdentifier.set(identifier, controller)
+      },
+    }
+
+    window.lazyApplication = application
+    window.stimulusLoadingExports.lazyLoadControllersFrom("controllers", application, root)
+  })
+
+  await expect.poll(() => page.evaluate(() => window.lazyApplication.registrations)).toEqual(["admin--user"])
+  expect(await page.evaluate(() => window.controllerImports)).toEqual({ adminUser: 1 })
+})
