@@ -14,6 +14,18 @@ module MartenStimulus
 
           private CONTROLLERS_DIR         = "src/assets/controllers"
           private MANUAL_INITIALIZER_PATH = "config/initializers/importmap.cr"
+          private CONTROLLER_PIN_ALL_FROM_PATTERN = /
+            pin_all_from
+            (?:
+              [\t ]+"src\/assets\/controllers"[\t ]*,[^\n]*\bunder:[\t ]*"controllers"
+              |
+              \s*\(
+                \s*"src\/assets\/controllers"\s*,
+                [^)]*\bunder:\s*"controllers"
+                [^)]*
+              \)
+            )
+          /x
 
           def setup
             on_argument(:subcommand, "Subcommand to execute") do |value|
@@ -97,7 +109,7 @@ module MartenStimulus
             end
 
             content = File.read(path)
-            if content.includes?("pin_all_from")
+            if controller_pin_all_from_configured?(content)
               step_skipped
               return
             end
@@ -112,6 +124,10 @@ module MartenStimulus
             else
               step_error("Could not locate the draw block end in #{path}")
             end
+          end
+
+          private def controller_pin_all_from_configured?(content : String) : Bool
+            !content.match(CONTROLLER_PIN_ALL_FROM_PATTERN).nil?
           end
 
           private def build_controller_content(name : String) : String

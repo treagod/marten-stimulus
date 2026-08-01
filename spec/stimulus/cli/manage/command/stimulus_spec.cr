@@ -25,6 +25,20 @@ module MartenStimulus::CLI::Manage::Command::StimulusSpec
       File.join(@@project_root, "src/assets/controllers")
     end
 
+    def self.run_generate_controller(name = "hello")
+      stdout = IO::Memory.new
+      stderr = IO::Memory.new
+
+      command = new(
+        options: ["generate", "controller", name],
+        stdout: stdout,
+        stderr: stderr
+      )
+      command.handle
+
+      {stdout.rewind.gets_to_end, stderr.rewind.gets_to_end}
+    end
+
     def self.reset!
       prepare_project!
     end
@@ -153,15 +167,16 @@ describe MartenStimulus::CLI::Manage::Command::Stimulus do
       end
 
       it "skips pin_all_from insertion when already present" do
-        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
-          manual_initializer_content: <<-CRYSTAL
-            Marten.configure do |config|
-              config.importmap.draw do
-                pin "application", "application.js"
-                pin_all_from "src/assets/controllers", under: "controllers"
-              end
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from "src/assets/controllers", under: "controllers"
             end
-            CRYSTAL
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
         )
 
         stdout = IO::Memory.new
@@ -177,6 +192,129 @@ describe MartenStimulus::CLI::Manage::Command::Stimulus do
         output = stdout.rewind.gets_to_end
         # pin_all_from step should be skipped
         output.scan("SKIPPED").size.should be >= 1
+        File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        ).should eq initializer_content
+      end
+
+      it "recognizes a multiline controller pin_all_from directive" do
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from(
+                "src/assets/controllers",
+                under: "controllers"
+              )
+            end
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
+        )
+
+        _, stderr = MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.run_generate_controller
+
+        stderr.should be_empty
+        File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        ).should eq initializer_content
+      end
+
+      it "recognizes a controller pin_all_from directive with additional arguments" do
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from(
+                "src/assets/controllers",
+                under: "controllers",
+                preload: false
+              )
+            end
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
+        )
+
+        _, stderr = MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.run_generate_controller
+
+        stderr.should be_empty
+        File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        ).should eq initializer_content
+      end
+
+      it "inserts the controller directive when a different directory is pinned" do
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from "src/assets/components", under: "components"
+            end
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
+        )
+
+        _, stderr = MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.run_generate_controller
+
+        stderr.should be_empty
+        content = File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        )
+        content.includes?(%(pin_all_from "src/assets/components", under: "components")).should be_true
+        content.includes?(%(pin_all_from "src/assets/controllers", under: "controllers")).should be_true
+      end
+
+      it "inserts the controller directive when the controllers directory uses a different namespace" do
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from "src/assets/controllers", under: "stimulus"
+            end
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
+        )
+
+        _, stderr = MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.run_generate_controller
+
+        stderr.should be_empty
+        content = File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        )
+        content.includes?(%(pin_all_from "src/assets/controllers", under: "stimulus")).should be_true
+        content.includes?(%(pin_all_from "src/assets/controllers", under: "controllers")).should be_true
+      end
+
+      it "does not combine arguments from unrelated pin_all_from directives" do
+        initializer_content = <<-CRYSTAL
+          Marten.configure do |config|
+            config.importmap.draw do
+              pin "application", "application.js"
+              pin_all_from "src/assets/controllers", under: "stimulus"
+              pin_all_from "other/controllers", under: "controllers"
+              pin_all_from "src/assets/components", under: "components"
+            end
+          end
+          CRYSTAL
+        MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.prepare_project!(
+          manual_initializer_content: initializer_content
+        )
+
+        _, stderr = MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.run_generate_controller
+
+        stderr.should be_empty
+        content = File.read(
+          MartenStimulus::CLI::Manage::Command::StimulusSpec::TestStimulusCommand.manual_initializer_path
+        )
+        content.includes?(%(pin_all_from "src/assets/controllers", under: "controllers")).should be_true
+        content.scan("pin_all_from").size.should eq 4
       end
     end
   end
