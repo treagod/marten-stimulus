@@ -27,6 +27,13 @@ module MartenStimulus
             )
           /x
 
+          private record ControllerGenerationPlan,
+            filename : String,
+            controller_path : String,
+            controller_content : String,
+            initializer_path : String,
+            initializer_content : String?
+
           def setup
             on_argument(:subcommand, "Subcommand to execute") do |value|
               @subcommand = value
@@ -80,49 +87,76 @@ module MartenStimulus
           end
 
           private def run_generate_controller(name : String)
+            plan = preflight_controller_generation(name)
+
             print(style("Generating Stimulus controller:", fore: :light_blue, mode: :bold), ending: "\n")
 
-            filename = "#{name}_controller.js"
-            path = project_root.join(CONTROLLERS_DIR, filename).to_s
+            apply_controller_generation(plan)
+          end
 
-            print(%(› Creating #{style(filename, fore: :cyan, mode: :bold)}...), ending: "")
-            if File.exists?(path)
+          private def preflight_controller_generation(name : String) : ControllerGenerationPlan
+            filename = "#{name}_controller.js"
+            controllers_path = project_root.join(CONTROLLERS_DIR).expand
+            controller_path = controllers_path.join(filename).expand
+            relative_controller_path = controller_path.relative_to?(controllers_path)
+
+            if relative_controller_path.nil? || relative_controller_path.each_part.any? { |part| part == ".." }
+              print_error_and_exit("Controller name '#{name}' resolves outside #{CONTROLLERS_DIR}")
+            end
+
+            initializer_path = manual_initializer_path
+            unless File.exists?(initializer_path)
+              print_error_and_exit("#{initializer_path} does not exist — run `marten importmap init` first")
+            end
+
+            initializer_content = File.read(initializer_path)
+            modified_initializer_content = if controller_pin_all_from_configured?(initializer_content)
+                                             nil
+                                           else
+                                             build_modified_initializer_content(initializer_content, initializer_path)
+                                           end
+
+            ControllerGenerationPlan.new(
+              filename: filename,
+              controller_path: controller_path.to_s,
+              controller_content: build_controller_content(name),
+              initializer_path: initializer_path,
+              initializer_content: modified_initializer_content
+            )
+          end
+
+          private def build_modified_initializer_content(content : String, path : String) : String
+            if match = content.match(/^(\s+end\s*\n)(end[^\n]*\n?\z)/m)
+              indent = match[1][/^\s+/]? || "  "
+              insert_pos = match.begin(0).not_nil!
+              pin_all_from_line = %(#{indent}  pin_all_from "src/assets/controllers", under: "controllers"\n)
+              content[0, insert_pos] + pin_all_from_line + content[insert_pos..]
+            else
+              print_error_and_exit("Could not locate the draw block end in #{path}")
+            end
+          end
+
+          private def apply_controller_generation(plan : ControllerGenerationPlan)
+            print(%(› Creating #{style(plan.filename, fore: :cyan, mode: :bold)}...), ending: "")
+
+            if File.exists?(plan.controller_path)
               step_skipped
             else
-              Dir.mkdir_p(File.dirname(path))
-              File.write(path, build_controller_content(name))
+              Dir.mkdir_p(File.dirname(plan.controller_path))
+              File.write(plan.controller_path, plan.controller_content)
               step_done
             end
 
-            ensure_pin_all_from
-          end
-
-          private def ensure_pin_all_from
             print(
               %(› Ensuring #{style(%(pin_all_from "src/assets/controllers"), fore: :cyan, mode: :bold)} in #{MANUAL_INITIALIZER_PATH}...),
               ending: ""
             )
 
-            path = manual_initializer_path
-            unless File.exists?(path)
-              step_error("#{path} does not exist — run `marten importmap init` first")
-            end
-
-            content = File.read(path)
-            if controller_pin_all_from_configured?(content)
-              step_skipped
-              return
-            end
-
-            if match = content.match(/^(\s+end\s*\n)(end[^\n]*\n?\z)/m)
-              indent = match[1][/^\s+/]? || "  "
-              insert_pos = match.begin(0).not_nil!
-              pin_all_from_line = %(#{indent}  pin_all_from "src/assets/controllers", under: "controllers"\n)
-              modified = content[0, insert_pos] + pin_all_from_line + content[insert_pos..]
-              File.write(path, modified)
+            if initializer_content = plan.initializer_content
+              File.write(plan.initializer_path, initializer_content)
               step_done
             else
-              step_error("Could not locate the draw block end in #{path}")
+              step_skipped
             end
           end
 
@@ -149,11 +183,6 @@ module MartenStimulus
 
           private def step_skipped
             print(style(" SKIPPED", fore: :yellow, mode: :bold))
-          end
-
-          private def step_error(message : String) : NoReturn
-            print(style(" ERROR", fore: :red, mode: :bold))
-            print_error_and_exit(message)
           end
 
           private getter subcommand
