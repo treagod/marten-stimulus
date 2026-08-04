@@ -75,10 +75,15 @@ Add `pin_all_from` to `config/initializers/importmap.cr` so the controllers dire
 Marten.configure do |config|
   config.importmap.draw do
     pin "application", "application.js"
-    pin_all_from "src/assets/controllers", under: "controllers"
+    pin_all_from(
+      "src/assets/controllers",
+      under: "controllers"
+    )
   end
 end
 ```
+
+This configuration uses the default `preload: true`, which is appropriate when eagerly loading a modest number of controllers.
 
 `stimulus-loading` is pinned automatically by `MartenStimulus::App` and served as `stimulus-loading.js` from the shard's bundled assets — no manual pin or vendor file needed.
 
@@ -108,24 +113,59 @@ Controller naming follows the Stimulus convention: `hello_controller.js` is regi
 
 Two loading strategies are available:
 
-**`eagerLoadControllersFrom(under, application)`** — imports all matching controllers immediately on page load:
+### Eager loading
+
+`eagerLoadControllersFrom(under, application)` imports and registers all matching controllers immediately on page load:
 
 ```javascript
 import { eagerLoadControllersFrom } from "stimulus-loading"
 eagerLoadControllersFrom("controllers", Stimulus)
 ```
 
-**`lazyLoadControllersFrom(under, application)`** — imports a controller only when an element with the matching `data-controller` attribute first appears in the DOM:
+Configure the controller pins with the default preload behavior:
+
+```crystal
+pin_all_from(
+  "src/assets/controllers",
+  under: "controllers"
+)
+```
+
+The default `preload: true` is suitable for a modest number of eagerly loaded controllers.
+
+### Lazy loading
+
+`lazyLoadControllersFrom(under, application, element = document)` delays importing and registering a controller until its identifier appears in a `data-controller` attribute:
 
 ```javascript
 import { lazyLoadControllersFrom } from "stimulus-loading"
 lazyLoadControllersFrom("controllers", Stimulus)
 ```
 
-Lazy loading uses a `MutationObserver` to watch for new elements, which can reduce the initial JavaScript footprint on pages that don't use every controller.
+To defer controller downloads as well, disable preloading for the controller pins:
+
+```crystal
+pin_all_from(
+  "src/assets/controllers",
+  under: "controllers",
+  preload: false
+)
+```
+
+Without `preload: false`, controller execution and registration remain lazy, but the browser may still download the controllers through module preload links.
+
+Pass an element as the optional third argument to limit the initial controller scan to that root:
+
+```javascript
+lazyLoadControllersFrom("controllers", Stimulus, element)
+```
+
+The current mutation observer continues to watch the entire document for later controller changes.
+
+Failed controller imports are reported in the browser console with the controller identifier and importmap module path.
 
 ## How it works
 
 `MartenStimulus::App` pins `stimulus-loading` during app setup, pointing to a `stimulus-loading.js` asset bundled inside the shard. Marten's asset pipeline discovers it automatically via the app's `assets/` directory.
 
-Both loading functions read the importmap JSON at runtime, find all entries whose key starts with the given prefix (`controllers/`), and register each module's default export with Stimulus. Controller identifiers are derived by stripping the `_controller` suffix and converting underscores to dashes (e.g. `controllers/my_form_controller` → `my-form`).
+Both loading functions read the importmap JSON at runtime. Eager loading imports valid controller entries below the given prefix (`controllers/`), while lazy loading resolves controllers referenced by `data-controller` attributes in the DOM. Each module's default export is registered with Stimulus. Controller identifiers are derived by stripping the `_controller` suffix and converting underscores to dashes (e.g. `controllers/my_form_controller` → `my-form`).
