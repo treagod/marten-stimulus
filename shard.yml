@@ -1,6 +1,13 @@
 name: marten_stimulus
 version: 0.1.0
 
+authors:
+  - Marvin Ahlgrimm <marv.ahlgrimm@gmail.com>
+
+crystal: ">= 1.13.0"
+
+license: MIT
+
 dependencies:
   marten_importmap:
     github: treagod/marten-importmap

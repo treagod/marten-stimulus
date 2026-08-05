@@ -2,10 +2,7 @@
 
 [Hotwire Stimulus](https://stimulus.hotwired.dev) integration for [Marten](https://martenframework.com), built on top of [marten-importmap](https://github.com/treagod/marten-importmap).
 
-Provides:
-
-- Bundled `stimulus-loading.js` asset, auto-pinned into the importmap
-- `marten stimulus generate controller <name>` CLI command to scaffold controllers
+Adding a Stimulus controller by hand means pinning it in the importmap and registering it with the application. This shard does both for you. It ships a bundled `stimulus-loading.js` that resolves controllers from the importmap at runtime, plus a generator that scaffolds a controller file and keeps the importmap configuration up to date.
 
 ## Installation
 
@@ -17,9 +14,9 @@ dependencies:
     github: treagod/marten-stimulus
 ```
 
-`marten-importmap` is pulled in as a transitive dependency — no need to declare it separately.
+`marten-importmap` comes in as a transitive dependency. You do not need to declare it separately.
 
-Run `shards install`, then add the require:
+Run `shards install`, then add the requires:
 
 ```crystal
 # src/project.cr
@@ -32,7 +29,7 @@ require "marten/cli"
 require "marten_stimulus/cli"  # also loads marten_importmap/cli
 ```
 
-Both apps must be registered explicitly in `config.installed_apps` in the correct order:
+Both apps must be registered explicitly, in this order:
 
 ```crystal
 config.installed_apps = [
@@ -41,17 +38,17 @@ config.installed_apps = [
 ]
 ```
 
-## Setup
+## Getting started
 
-If you haven't initialized importmap yet, run:
+If importmap is not initialized yet, run:
 
 ```bash
 marten importmap init
 ```
 
-This creates `config/initializers/importmap.cr`, `config/initializers/importmap_pins.cr`, and `src/assets/application.js`. See [marten-importmap](https://github.com/treagod/marten-importmap) for full details.
+This creates `config/initializers/importmap.cr`, `config/initializers/importmap_pins.cr`, and `src/assets/application.js`. See [marten-importmap](https://github.com/treagod/marten-importmap) for the details.
 
-> **Note:** `marten importmap init` checks for `require "marten_importmap"` literally. If your project only has `require "marten_stimulus"`, it will insert a redundant `require "marten_importmap"` line. This is harmless — Crystal's require is idempotent — but you can remove it afterwards since `marten_stimulus` already pulls it in.
+> **Note:** `marten importmap init` looks for a literal `require "marten_importmap"`, so a project that only requires `marten_stimulus` gets a redundant require line added. Crystal's `require` is idempotent, so the line does no harm. You can delete it.
 
 Pin Stimulus:
 
@@ -59,7 +56,7 @@ Pin Stimulus:
 marten importmap pin @hotwired/stimulus
 ```
 
-Then update `src/assets/application.js` to boot Stimulus and load controllers automatically:
+Boot it in `src/assets/application.js` and let the loader pick up your controllers:
 
 ```javascript
 import { Application } from "@hotwired/stimulus"
@@ -69,7 +66,7 @@ const Stimulus = Application.start()
 eagerLoadControllersFrom("controllers", Stimulus)
 ```
 
-Add `pin_all_from` to `config/initializers/importmap.cr` so the controllers directory is included in the importmap:
+Finally, add `pin_all_from` to `config/initializers/importmap.cr` so the controllers directory ends up in the importmap:
 
 ```crystal
 Marten.configure do |config|
@@ -83,19 +80,15 @@ Marten.configure do |config|
 end
 ```
 
-This configuration uses the default `preload: true`, which is appropriate when eagerly loading a modest number of controllers.
-
-`stimulus-loading` is pinned automatically by `MartenStimulus::App` and served as `stimulus-loading.js` from the shard's bundled assets — no manual pin or vendor file needed.
+You do not have to pin `stimulus-loading` yourself. `MartenStimulus::App` pins it during setup, and Marten's asset pipeline serves it from the shard's bundled assets.
 
 ## Generating controllers
 
 ```bash
 marten stimulus generate controller hello
-# → creates src/assets/controllers/hello_controller.js
-# → ensures pin_all_from is present in config/initializers/importmap.cr
 ```
 
-The generated file:
+The command creates `src/assets/controllers/hello_controller.js`:
 
 ```javascript
 import { Controller } from "@hotwired/stimulus"
@@ -107,42 +100,51 @@ export default class extends Controller {
 }
 ```
 
-Controller naming follows the Stimulus convention: `hello_controller.js` is registered as `hello`, `my_form_controller.js` as `my-form`. Use `data-controller="hello"` in your templates to attach it.
+It also checks that `pin_all_from "src/assets/controllers", under: "controllers"` is present in `config/initializers/importmap.cr` and inserts it into the `draw` block if it is missing.
+
+The generator validates before it writes anything:
+
+- Names that resolve outside `src/assets/controllers` are rejected.
+- A missing `config/initializers/importmap.cr` aborts the command with a hint to run `marten importmap init`.
+- An existing controller file is skipped instead of overwritten.
+
+### Naming
+
+Identifiers follow the Stimulus conventions. The `_controller` suffix is dropped. Underscores become dashes and directories become double dashes.
+
+| File | Identifier | Usage |
+| --- | --- | --- |
+| `controllers/hello_controller.js` | `hello` | `data-controller="hello"` |
+| `controllers/my_form_controller.js` | `my-form` | `data-controller="my-form"` |
+| `controllers/admin/user_controller.js` | `admin--user` | `data-controller="admin--user"` |
+
+Only files ending in `_controller.js` are treated as controllers. Shared helpers can live under `src/assets/controllers/` too. They still land in the importmap and remain importable, but the loader will not register them.
 
 ## Loading strategies
 
-Two loading strategies are available:
-
 ### Eager loading
 
-`eagerLoadControllersFrom(under, application)` imports and registers all matching controllers immediately on page load:
+`eagerLoadControllersFrom(under, application)` imports and registers every matching controller on page load:
 
 ```javascript
 import { eagerLoadControllersFrom } from "stimulus-loading"
 eagerLoadControllersFrom("controllers", Stimulus)
 ```
 
-Configure the controller pins with the default preload behavior:
+Keep the default `preload: true` on `pin_all_from` here, since the controllers are needed immediately anyway.
 
-```crystal
-pin_all_from(
-  "src/assets/controllers",
-  under: "controllers"
-)
-```
-
-The default `preload: true` is suitable for a modest number of eagerly loaded controllers.
+The function returns a promise. A failed import rejects it with the controller identifier and the module path in the error message, so attach a `.catch()` if you want to report those failures.
 
 ### Lazy loading
 
-`lazyLoadControllersFrom(under, application, element = document)` delays importing and registering a controller until its identifier appears in a `data-controller` attribute:
+`lazyLoadControllersFrom(under, application, element = document)` waits until an identifier actually shows up in a `data-controller` attribute before importing and registering it:
 
 ```javascript
 import { lazyLoadControllersFrom } from "stimulus-loading"
 lazyLoadControllersFrom("controllers", Stimulus)
 ```
 
-To defer controller downloads as well, disable preloading for the controller pins:
+To defer the downloads as well, turn off preloading for the controller pins:
 
 ```crystal
 pin_all_from(
@@ -152,20 +154,28 @@ pin_all_from(
 )
 ```
 
-Without `preload: false`, controller execution and registration remain lazy, but the browser may still download the controllers through module preload links.
+Without `preload: false`, execution and registration are still lazy, but the browser may already have downloaded every controller through module preload links.
 
-Pass an element as the optional third argument to limit the initial controller scan to that root:
+Failed imports are logged to the console with the identifier and the module path. They do not interrupt the rest of the page.
+
+The optional third argument narrows the initial scan to a subtree:
 
 ```javascript
 lazyLoadControllersFrom("controllers", Stimulus, element)
 ```
 
-The current mutation observer continues to watch the entire document for later controller changes.
-
-Failed controller imports are reported in the browser console with the controller identifier and importmap module path.
+The mutation observer still watches the whole document afterwards, so controllers added to the page later are picked up regardless of the scan root.
 
 ## How it works
 
-`MartenStimulus::App` pins `stimulus-loading` during app setup, pointing to a `stimulus-loading.js` asset bundled inside the shard. Marten's asset pipeline discovers it automatically via the app's `assets/` directory.
+`MartenStimulus::App` pins `stimulus-loading` during app setup. It points at a `stimulus-loading.js` file bundled in the shard's `assets/` directory, which Marten's asset pipeline discovers on its own.
 
-Both loading functions read the importmap JSON at runtime. Eager loading imports valid controller entries below the given prefix (`controllers/`), while lazy loading resolves controllers referenced by `data-controller` attributes in the DOM. Each module's default export is registered with Stimulus. Controller identifiers are derived by stripping the `_controller` suffix and converting underscores to dashes (e.g. `controllers/my_form_controller` → `my-form`).
+Both loaders read the importmap JSON from the page at runtime. Eager loading walks the importmap and imports every entry below the given prefix that looks like a controller. Lazy loading resolves identifiers found in `data-controller` attributes back to module paths. In both cases the module's default export is registered with Stimulus.
+
+## Credits
+
+`stimulus-loading.js` is adapted from [hotwired/stimulus-rails](https://github.com/hotwired/stimulus-rails), MIT licensed.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
